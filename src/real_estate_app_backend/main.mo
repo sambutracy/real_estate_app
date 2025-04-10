@@ -3,10 +3,19 @@ import Hash "mo:base/Hash";
 import HashMap "mo:base/HashMap";
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
+import Nat32 "mo:base/Nat32";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
 
 actor RealEstate {
+
+    // Custom hash function for Nat that handles large values better
+    private func natHash(n: Nat) : Hash.Hash {
+        // This hash function uses bit operations to ensure all bits are considered
+        let hash = Nat32.fromNat(n);
+        let rotated = (hash << 5) | (hash >> 27);  // 5-bit left rotation
+        return (hash ^ rotated) & 0x3fffffff;  // XOR and mask to 30 bits
+    };
 
     // Add a function to check if a user is authenticated
     public query func whoami(caller : Principal) : async Text {
@@ -31,7 +40,7 @@ actor RealEstate {
 
     // Store properties in a HashMap
     private stable var nextId : Nat = 0;
-    private var properties = HashMap.HashMap<Nat, Property>(0, Nat.equal, Hash.hash);
+    private var properties = HashMap.HashMap<Nat, Property>(0, Nat.equal, natHash);
 
     // Create a new property listing
     public shared(msg) func createProperty(
@@ -142,7 +151,6 @@ actor RealEstate {
         };
     };
 
-    // Search properties by location
     // Search properties by location
     public query func searchByLocation(searchTerm: Text) : async [Property] {
         let searchResults = Iter.toArray(

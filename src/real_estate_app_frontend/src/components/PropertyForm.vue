@@ -35,9 +35,10 @@
             <input
               id="price"
               type="number"
-              v-model="formData.price"
-              placeholder="Enter price"
               min="0"
+              step="1"
+              v-model.number="formData.price"
+              placeholder="Enter price (whole number only)"
               required
             />
           </div>
@@ -165,12 +166,20 @@ export default {
   },
   methods: {
     handleSubmit() {
+      // Pre-validate the price field to ensure it's a valid positive integer
+      const price = Number(this.formData.price);
+      if (isNaN(price) || price < 0 || !Number.isInteger(price)) {
+        alert('Price must be a valid whole number');
+        return;
+      }
+      
+      // Ensure all numeric values are valid positive integers
       const formattedData = {
         ...this.formData,
-        price: Number(this.formData.price),
-        bedrooms: Number(this.formData.bedrooms),
-        bathrooms: Number(this.formData.bathrooms),
-        squareFootage: Number(this.formData.squareFootage)
+        price: Math.floor(Math.max(0, Number(this.formData.price))),
+        bedrooms: Math.floor(Math.max(0, Number(this.formData.bedrooms))),
+        bathrooms: Math.floor(Math.max(0, Number(this.formData.bathrooms))),
+        squareFootage: Math.floor(Math.max(0, Number(this.formData.squareFootage))),
       };
       
       this.$emit('submit-property', formattedData);

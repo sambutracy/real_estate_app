@@ -1,10 +1,5 @@
 import { AuthClient } from "@dfinity/auth-client";
-import { Principal } from "@dfinity/principal";
-
-// Default host for Internet Identity in local development
-const II_LOCAL_HOST = "http://localhost:4943/?canisterId=rdmx6-jaaaa-aaaaa-aaadq-cai"; 
-// Mainnet host for Internet Identity
-const II_MAINNET_HOST = "https://identity.ic0.app";
+import { HttpAgent } from "@dfinity/agent";
 
 class AuthService {
   constructor() {
@@ -13,57 +8,70 @@ class AuthService {
   }
 
   async initialize() {
-    this.authClient = await AuthClient.create();
-    if (await this.authClient.isAuthenticated()) {
-      this.identity = await this.authClient.getIdentity();
-      return true;
+    try {
+      this.authClient = await AuthClient.create();
+      const isAuthenticated = await this.authClient.isAuthenticated();
+      
+      if (isAuthenticated) {
+        this.identity = this.authClient.getIdentity();
+        console.log("User is authenticated with principal:", this.identity.getPrincipal().toString());
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error("Error initializing auth client:", error);
+      return false;
     }
-    return false;
   }
 
   async login() {
-    return new Promise((resolve, reject) => {
-      this.authClient.login({
-        identityProvider: process.env.DFX_NETWORK === "local" ? II_LOCAL_HOST : II_MAINNET_HOST,
-        onSuccess: () => {
-          this.authClient.getIdentity().then(identity => {
-            this.identity = identity;
-            resolve(identity);
-          });
-        },
-        onError: (error) => {
-          reject(error);
-        }
+    try {
+      return new Promise((resolve) => {
+        this.authClient.login({
+          // Use the standard II canister ID for local development
+          identityProvider: process.env.NODE_ENV === "production"
+            ? "https://identity.ic0.app"
+            : `http://localhost:4943/?canisterId=${process.env.INTERNET_IDENTITY_CANISTER_ID || "rdmx6-jaaaa-aaaaa-aaadq-cai"}`,
+          // IMPORTANT: This makes sure you return to your app after authentication
+          onSuccess: () => {
+            this.identity = this.authClient.getIdentity();
+            console.log("Login successful. Principal:", this.identity.getPrincipal().toString());
+            resolve(true);
+          },
+          onError: (error) => {
+            console.error("Login failed:", error);
+            resolve(false);
+          }
+        });
       });
-    });
+    } catch (error) {
+      console.error("Error during login:", error);
+      return false;
+    }
   }
 
   async logout() {
-    if (this.authClient) {
+    try {
       await this.authClient.logout();
       this.identity = null;
       return true;
+    } catch (error) {
+      console.error("Error during logout:", error);
+      return false;
     }
-    return false;
   }
 
   getIdentity() {
     return this.identity;
   }
 
-  getPrincipal() {
-    if (this.identity) {
-      return this.identity.getPrincipal();
-    }
-    return null;
+  getPrincipalText() {
+    if (!this.identity) return 'Not authenticated';
+    return this.identity.getPrincipal().toString();
   }
 
-  getPrincipalText() {
-    const principal = this.getPrincipal();
-    if (principal) {
-      return principal.toString();
-    }
-    return "Not authenticated";
+  isAuthenticated() {
+    return this.authClient?.isAuthenticated() || false;
   }
 }
 

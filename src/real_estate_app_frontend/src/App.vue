@@ -92,27 +92,44 @@ export default {
   async mounted() {
     console.log('App mounted');
     
+    // Add a timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      if (this.loading) {
+        this.loading = false;
+        this.error = 'Connection timeout. Please refresh the page.';
+        console.error('Connection timeout');
+      }
+    }, 10000); // 10 second timeout
+    
     try {
       // Simple approach - directly create the actor with hardcoded values
-      // This is more reliable for initial development
       const agent = new HttpAgent();
       
-      // Create the actor directly - this is a simpler approach that's less likely to have path issues
-      // You'll need to replace the canisterId with your actual canister ID
+      // IMPORTANT: For local development, we need to fetch the root key
+      // This is required for signature verification
+      if (process.env.NODE_ENV !== "production") {
+        await agent.fetchRootKey().catch(e => {
+          console.error("Failed to fetch root key:", e);
+          // Continue even if this fails
+        });
+      }
+      
+      // Create the actor with the properly initialized agent
       this.real_estate_app_backend = Actor.createActor(
-        // Simplified method during development - you can update this later
+        // Use your existing IDL definition...
         ({ IDL }) => {
+          // Your IDL interface definition
           return IDL.Service({
             'getAllProperties': IDL.Func([], [IDL.Vec(IDL.Record({
-              'id': IDL.Text,
+              'id': IDL.Nat,
               'title': IDL.Text,
               'description': IDL.Text,
-              'price': IDL.Float64,
+              'price': IDL.Nat,
               'imageUrl': IDL.Text,
               'location': IDL.Text,
-              'bedrooms': IDL.Nat8,
-              'bathrooms': IDL.Nat8,
-              'squareFootage': IDL.Nat32,
+              'bedrooms': IDL.Nat,
+              'bathrooms': IDL.Nat,
+              'squareFootage': IDL.Nat,
               'forSale': IDL.Bool,
               'forRent': IDL.Bool,
               'owner': IDL.Principal
@@ -120,44 +137,44 @@ export default {
             'createProperty': IDL.Func([
               IDL.Text,  // title
               IDL.Text,  // description
-              IDL.Float64, // price
+              IDL.Nat,   // price
               IDL.Text,  // imageUrl
               IDL.Text,  // location
-              IDL.Nat8,  // bedrooms
-              IDL.Nat8,  // bathrooms
-              IDL.Nat32, // squareFootage
+              IDL.Nat,   // bedrooms
+              IDL.Nat,   // bathrooms
+              IDL.Nat,   // squareFootage
               IDL.Bool,  // forSale
               IDL.Bool   // forRent
-            ], [IDL.Text], []),
+            ], [IDL.Nat], []),
             'searchByLocation': IDL.Func([IDL.Text], [IDL.Vec(IDL.Record({
-              'id': IDL.Text,
+              'id': IDL.Nat,
               'title': IDL.Text,
               'description': IDL.Text,
-              'price': IDL.Float64,
+              'price': IDL.Nat,
               'imageUrl': IDL.Text,
               'location': IDL.Text,
-              'bedrooms': IDL.Nat8,
-              'bathrooms': IDL.Nat8,
-              'squareFootage': IDL.Nat32,
+              'bedrooms': IDL.Nat,
+              'bathrooms': IDL.Nat,
+              'squareFootage': IDL.Nat,
               'forSale': IDL.Bool,
               'forRent': IDL.Bool,
               'owner': IDL.Principal
             }))], ['query']),
             'filterProperties': IDL.Func([
-              IDL.Vec(IDL.Nat8),  // minBedrooms
-              IDL.Vec(IDL.Float64), // maxPrice
-              IDL.Vec(IDL.Bool),  // forSale
-              IDL.Vec(IDL.Bool)   // forRent
+              IDL.Vec(IDL.Nat),  // minBedrooms
+              IDL.Vec(IDL.Nat),  // maxPrice
+              IDL.Vec(IDL.Bool), // forSale
+              IDL.Vec(IDL.Bool)  // forRent
             ], [IDL.Vec(IDL.Record({
-              'id': IDL.Text,
+              'id': IDL.Nat,
               'title': IDL.Text,
               'description': IDL.Text,
-              'price': IDL.Float64,
+              'price': IDL.Nat,
               'imageUrl': IDL.Text,
               'location': IDL.Text,
-              'bedrooms': IDL.Nat8,
-              'bathrooms': IDL.Nat8,
-              'squareFootage': IDL.Nat32,
+              'bedrooms': IDL.Nat,
+              'bathrooms': IDL.Nat,
+              'squareFootage': IDL.Nat,
               'forSale': IDL.Bool,
               'forRent': IDL.Bool,
               'owner': IDL.Principal
@@ -166,178 +183,142 @@ export default {
         },
         {
           agent,
-          canisterId: 'bkyz2-fmaaa-aaaaa-qaaaq-cai', // Your canister ID from the error message
+          canisterId: 'be2us-64aaa-aaaaa-qaabq-cai', // Updated with your new canister ID
         }
       );
       
-      // Check if user is already authenticated with either method
-      const iiAuthenticated = await AuthService.initialize();
-      const emailAuthenticated = await EmailAuthService.checkAuthentication();
-      
-      if (iiAuthenticated) {
-        this.isAuthenticated = true;
-        this.authMethod = 'internet-identity';
-      } else if (emailAuthenticated) {
-        this.isAuthenticated = true;
-        this.authMethod = 'email';
+      // Handle authentication in try/catch blocks to prevent hanging
+      try {
+        const iiAuthenticated = await AuthService.initialize();
+        this.isAuthenticated = iiAuthenticated;
+        if (iiAuthenticated) {
+          this.fetchProperties();
+        }
+      } catch (err) {
+        console.error('Authentication error:', err);
       }
-      
-      this.fetchProperties();
     } catch (err) {
-      this.error = 'Failed to connect to backend. Please check import paths.';
-      console.error(err);
+      console.error('Initialization error:', err);
+      this.error = 'Failed to initialize application';
+    } finally {
+      clearTimeout(timeout);
       this.loading = false;
     }
   },
   methods: {
-    // Update all methods to use this.real_estate_app_backend
-    handleIILoginSuccess() {
-      this.isAuthenticated = true;
-      this.fetchProperties();
-    },
-    handleIILogoutSuccess() {
-      this.isAuthenticated = false;
-    },
-    handleEmailLoginSuccess() {
-      this.isAuthenticated = true;
-      this.fetchProperties();
-    },
-    handleEmailLogoutSuccess() {
-      this.isAuthenticated = false;
-    },
-    
     async fetchProperties() {
       if (!this.real_estate_app_backend) {
         this.error = 'Backend connection not established';
+        this.loading = false;
         return;
       }
       
       try {
         this.loading = true;
         this.error = null;
-        const result = await this.real_estate_app_backend.getAllProperties();
+        
+        const propertyPromise = this.real_estate_app_backend.getAllProperties();
+        const result = await propertyPromise;
         this.properties = result;
-        this.loading = false;
       } catch (err) {
-        this.error = 'Failed to fetch properties';
+        console.error('Error fetching properties:', err);
+        this.error = 'Failed to load properties';
+      } finally {
         this.loading = false;
-        console.error(err);
       }
     },
     
     async createProperty(propertyData) {
-      if (!this.real_estate_app_backend) {
-        this.error = 'Backend connection not established';
-        return;
-      }
-      
       try {
         this.formLoading = true;
         this.error = null;
         
-        // Use the authenticated identity
-        if (this.authMethod === 'internet-identity') {
-          // For Internet Identity, the Principal is automatically used
-          await this.real_estate_app_backend.createProperty(
-            propertyData.title,
-            propertyData.description,
-            propertyData.price,
-            propertyData.imageUrl,
-            propertyData.location,
-            propertyData.bedrooms,
-            propertyData.bathrooms,
-            propertyData.squareFootage,
-            propertyData.forSale,
-            propertyData.forRent
-          );
-        } else {
-          // For email auth, we might need to pass the token
-          const token = EmailAuthService.getToken();
-          if (!token) {
-            throw new Error("Authentication token missing");
-          }
-          
-          await this.real_estate_app_backend.createProperty(
-            propertyData.title,
-            propertyData.description,
-            propertyData.price,
-            propertyData.imageUrl,
-            propertyData.location,
-            propertyData.bedrooms,
-            propertyData.bathrooms,
-            propertyData.squareFootage,
-            propertyData.forSale,
-            propertyData.forRent
-          );
-        }
+        // Convert all values to appropriate types
+        const price = Number(propertyData.price);
+        const bedrooms = Number(propertyData.bedrooms);
+        const bathrooms = Number(propertyData.bathrooms);
+        const squareFootage = Number(propertyData.squareFootage);
         
-        this.formLoading = false;
-        // Refresh property list
-        this.fetchProperties();
+        console.log('Creating property with values:', {
+          title: propertyData.title,
+          description: propertyData.description,
+          price,
+          imageUrl: propertyData.imageUrl,
+          location: propertyData.location,
+          bedrooms,
+          bathrooms,
+          squareFootage,
+          forSale: propertyData.forSale,
+          forRent: propertyData.forRent
+        });
+        
+        const result = await this.real_estate_app_backend.createProperty(
+          propertyData.title,
+          propertyData.description,
+          price,
+          propertyData.imageUrl,
+          propertyData.location,
+          bedrooms,
+          bathrooms,
+          squareFootage,
+          propertyData.forSale,
+          propertyData.forRent
+        );
+        
+        await this.fetchProperties();
+        return result;
       } catch (err) {
-        this.error = 'Failed to create property listing';
+        console.error('Error creating property:', err);
+        this.error = 'Failed to create property: ' + err.message;
+        throw err;
+      } finally {
         this.formLoading = false;
-        console.error(err);
       }
     },
     
     async applyFilters(filters) {
-      if (!this.real_estate_app_backend) {
-        this.error = 'Backend connection not established';
-        return;
-      }
-      
       try {
         this.loading = true;
         this.error = null;
         
-        // If location filter is set, use the search by location function
-        if (filters.location) {
-          const results = await this.real_estate_app_backend.searchByLocation(filters.location);
-          this.properties = results;
-          this.loading = false;
-          return;
-        }
-        
-        // Otherwise use the filter function
-        const minBedrooms = filters.minBedrooms !== null ? [filters.minBedrooms] : [];
-        const maxPrice = filters.maxPrice !== null ? [filters.maxPrice] : [];
-        const forSale = filters.forSale ? [true] : [];
-        const forRent = filters.forRent ? [true] : [];
-        
-        const results = await this.real_estate_app_backend.filterProperties(
-          minBedrooms,
-          maxPrice,
-          forSale,
-          forRent
+        const result = await this.real_estate_app_backend.filterProperties(
+          filters.minBedrooms ? [filters.minBedrooms] : [],
+          filters.maxPrice ? [filters.maxPrice] : [],
+          filters.forSale !== null ? [filters.forSale] : [],
+          filters.forRent !== null ? [filters.forRent] : []
         );
         
-        this.properties = results;
-        this.loading = false;
+        this.properties = result;
       } catch (err) {
+        console.error('Error applying filters:', err);
         this.error = 'Failed to filter properties';
+      } finally {
         this.loading = false;
-        console.error(err);
       }
+    },
+    
+    handleIILoginSuccess() {
+      this.isAuthenticated = true;
+      this.fetchProperties();
+    },
+    
+    handleIILogoutSuccess() {
+      this.isAuthenticated = false;
+    },
+    
+    handleEmailLoginSuccess() {
+      this.isAuthenticated = true;
+      this.fetchProperties();
+    },
+    
+    handleEmailLogoutSuccess() {
+      this.isAuthenticated = false;
     }
   }
 }
 </script>
 
 <style>
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-body {
-  background-color: #f5f5f5;
-  color: #333;
-  line-height: 1.6;
-}
-
 .app-container {
   max-width: 1200px;
   margin: 0 auto;
@@ -345,61 +326,52 @@ body {
 }
 
 header {
-  margin-bottom: 30px;
   text-align: center;
-}
-
-h1 {
-  color: #1a73e8;
-  margin-bottom: 10px;
-}
-
-.error-message {
-  background-color: #ffebee;
-  color: #c62828;
-  padding: 10px;
-  border-radius: 4px;
-  margin-bottom: 20px;
+  margin-bottom: 30px;
 }
 
 .auth-methods {
   margin-bottom: 30px;
-  background-color: #f8f9fa;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  text-align: center;
 }
 
 .auth-tabs {
   display: flex;
+  justify-content: center;
   margin-bottom: 20px;
 }
 
 .auth-tab {
-  flex: 1;
-  padding: 10px;
-  background: none;
+  padding: 10px 20px;
   border: none;
-  border-bottom: 2px solid #ddd;
+  background-color: #f0f0f0;
   cursor: pointer;
+  margin: 0 5px;
 }
 
 .auth-tab.active {
-  border-bottom: 2px solid #1a73e8;
-  font-weight: bold;
+  background-color: #007bff;
+  color: white;
 }
 
 .auth-container {
-  padding: 20px;
-  background-color: white;
-  border-radius: 4px;
+  margin-top: 20px;
 }
 
 .login-prompt {
   text-align: center;
-  padding: 20px;
+  margin: 20px 0;
+  padding: 15px;
   background-color: #f8f9fa;
-  border-radius: 8px;
-  margin-top: 20px;
+  border-radius: 5px;
+}
+
+.error-message {
+  color: red;
+  padding: 10px;
+  margin: 10px 0;
+  background-color: #ffeeee;
+  border: 1px solid #ffcccc;
+  border-radius: 5px;
 }
 </style>

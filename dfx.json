@@ -1,20 +1,27 @@
 {
   "canisters": {
+    "internet_identity": {
+      "type": "custom",
+      "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
+      "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz",
+      "remote": {
+        "id": {
+          "ic": "rdmx6-jaaaa-aaaaa-aaadq-cai"
+        }
+      }
+    },
     "real_estate_app_backend": {
       "main": "src/real_estate_app_backend/main.mo",
       "type": "motoko"
     },
     "auth": {
       "main": "src/real_estate_app_backend/auth.mo",
-      "type": "motoko"
+      "type": "motoko" 
     },
     "real_estate_app_frontend": {
-      "dependencies": [
-        "real_estate_app_backend",
-        "auth"
-      ],
+      "dependencies": ["real_estate_app_backend", "auth", "internet_identity"],
       "frontend": {
-        "entrypoint": "src/real_estate_app_frontend/index.html"
+        "entrypoint": "src/real_estate_app_frontend/src/main.js"
       },
       "source": [
         "src/real_estate_app_frontend/assets",
@@ -29,6 +36,5 @@
       "packtool": ""
     }
   },
-  "output_env_file": ".env",
   "version": 1
 }
