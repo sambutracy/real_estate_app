@@ -8,10 +8,10 @@
       <h2>Choose Authentication Method</h2>
       <div class="auth-tabs">
         <button 
-          :class="['auth-tab', { active: authMethod === 'internet-identity' }]" 
-          @click="authMethod = 'internet-identity'"
+          :class="['auth-tab', { active: authMethod === 'nfid' }]" 
+          @click="authMethod = 'nfid'"
         >
-          Internet Identity
+          NFID
         </button>
         <button 
           :class="['auth-tab', { active: authMethod === 'email' }]" 
@@ -21,10 +21,10 @@
         </button>
       </div>
       
-      <div v-if="authMethod === 'internet-identity'" class="auth-container">
+      <div v-if="authMethod === 'nfid'" class="auth-container">
         <AuthButtons 
-          @login-success="handleIILoginSuccess" 
-          @logout-success="handleIILogoutSuccess" 
+          @login-success="handleNFIDLoginSuccess" 
+          @logout-success="handleNFIDLogoutSuccess" 
         />
       </div>
       
@@ -85,7 +85,7 @@ export default {
       formLoading: false,
       error: null,
       isAuthenticated: false,
-      authMethod: 'internet-identity', // 'internet-identity' or 'email'
+      authMethod: 'nfid', // Changed default from 'internet-identity' to 'nfid'
       real_estate_app_backend: null
     }
   },
@@ -102,26 +102,22 @@ export default {
     }, 10000); // 10 second timeout
     
     try {
-      // Simple approach - directly create the actor with hardcoded values
+      // Initialize the backend actor
       const agent = new HttpAgent();
       
-      // IMPORTANT: For local development, we need to fetch the root key
-      // This is required for signature verification
       if (process.env.NODE_ENV !== "production") {
         await agent.fetchRootKey().catch(e => {
           console.error("Failed to fetch root key:", e);
-          // Continue even if this fails
         });
       }
       
-      // Create the actor with the properly initialized agent
+      // Create the backend actor
       this.real_estate_app_backend = Actor.createActor(
-        // Use your existing IDL definition...
         ({ IDL }) => {
-          // Your IDL interface definition
           return IDL.Service({
             'getAllProperties': IDL.Func([], [IDL.Vec(IDL.Record({
               'id': IDL.Nat,
+              'owner': IDL.Principal,
               'title': IDL.Text,
               'description': IDL.Text,
               'price': IDL.Nat,
@@ -131,8 +127,7 @@ export default {
               'bathrooms': IDL.Nat,
               'squareFootage': IDL.Nat,
               'forSale': IDL.Bool,
-              'forRent': IDL.Bool,
-              'owner': IDL.Principal
+              'forRent': IDL.Bool
             }))], ['query']),
             'createProperty': IDL.Func([
               IDL.Text,  // title
@@ -146,8 +141,9 @@ export default {
               IDL.Bool,  // forSale
               IDL.Bool   // forRent
             ], [IDL.Nat], []),
-            'searchByLocation': IDL.Func([IDL.Text], [IDL.Vec(IDL.Record({
+            'getProperty': IDL.Func([IDL.Nat], [IDL.Opt(IDL.Record({
               'id': IDL.Nat,
+              'owner': IDL.Principal,
               'title': IDL.Text,
               'description': IDL.Text,
               'price': IDL.Nat,
@@ -157,16 +153,16 @@ export default {
               'bathrooms': IDL.Nat,
               'squareFootage': IDL.Nat,
               'forSale': IDL.Bool,
-              'forRent': IDL.Bool,
-              'owner': IDL.Principal
+              'forRent': IDL.Bool
             }))], ['query']),
             'filterProperties': IDL.Func([
-              IDL.Vec(IDL.Nat),  // minBedrooms
-              IDL.Vec(IDL.Nat),  // maxPrice
-              IDL.Vec(IDL.Bool), // forSale
-              IDL.Vec(IDL.Bool)  // forRent
+              IDL.Opt(IDL.Nat),  // minBedrooms
+              IDL.Opt(IDL.Nat),  // maxPrice
+              IDL.Opt(IDL.Bool), // forSale
+              IDL.Opt(IDL.Bool)  // forRent
             ], [IDL.Vec(IDL.Record({
               'id': IDL.Nat,
+              'owner': IDL.Principal,
               'title': IDL.Text,
               'description': IDL.Text,
               'price': IDL.Nat,
@@ -176,23 +172,49 @@ export default {
               'bathrooms': IDL.Nat,
               'squareFootage': IDL.Nat,
               'forSale': IDL.Bool,
-              'forRent': IDL.Bool,
-              'owner': IDL.Principal
-            }))], ['query'])
+              'forRent': IDL.Bool
+            }))], ['query']),
+            'searchByLocation': IDL.Func([IDL.Text], [IDL.Vec(IDL.Record({
+              'id': IDL.Nat,
+              'owner': IDL.Principal,
+              'title': IDL.Text,
+              'description': IDL.Text,
+              'price': IDL.Nat,
+              'imageUrl': IDL.Text,
+              'location': IDL.Text,
+              'bedrooms': IDL.Nat,
+              'bathrooms': IDL.Nat,
+              'squareFootage': IDL.Nat,
+              'forSale': IDL.Bool,
+              'forRent': IDL.Bool
+            }))], ['query']),
+            'whoami': IDL.Func([IDL.Principal], [IDL.Text], ['query'])
           });
         },
         {
           agent,
-          canisterId: 'be2us-64aaa-aaaaa-qaabq-cai', // Updated with your new canister ID
+          canisterId: 'be2us-64aaa-aaaaa-qaabq-cai',
         }
       );
       
-      // Handle authentication in try/catch blocks to prevent hanging
+      // Check if user is already authenticated with either method
       try {
-        const iiAuthenticated = await AuthService.initialize();
-        this.isAuthenticated = iiAuthenticated;
-        if (iiAuthenticated) {
+        // Check NFID authentication
+        const nfidAuthenticated = await AuthService.initialize();
+        
+        if (nfidAuthenticated) {
+          this.isAuthenticated = true;
+          this.authMethod = 'nfid';
           this.fetchProperties();
+        } else {
+          // Check email authentication
+          const emailAuthenticated = await EmailAuthService.checkAuthentication();
+          
+          if (emailAuthenticated) {
+            this.isAuthenticated = true;
+            this.authMethod = 'email';
+            this.fetchProperties();
+          }
         }
       } catch (err) {
         console.error('Authentication error:', err);
@@ -297,12 +319,12 @@ export default {
       }
     },
     
-    handleIILoginSuccess() {
+    handleNFIDLoginSuccess() {
       this.isAuthenticated = true;
       this.fetchProperties();
     },
     
-    handleIILogoutSuccess() {
+    handleNFIDLogoutSuccess() {
       this.isAuthenticated = false;
     },
     
@@ -319,59 +341,170 @@ export default {
 </script>
 
 <style>
+/* Global styles and variables */
+:root {
+  --primary: #4f46e5;
+  --primary-dark: #4338ca;
+  --secondary: #06b6d4;
+  --dark: #1e293b;
+  --light: #f8fafc;
+  --gray: #64748b;
+  --gray-light: #e2e8f0;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --border-radius: 8px;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Reset and base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font);
+  background-color: #f5f7fa;
+  color: var(--dark);
+  line-height: 1.6;
+}
+
+/* Main container */
 .app-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
+  background-color: white;
+  box-shadow: var(--shadow);
+  border-radius: var(--border-radius);
+  margin-top: 20px;
+  margin-bottom: 20px;
 }
 
+/* Header styling */
 header {
   text-align: center;
-  margin-bottom: 30px;
+  margin-bottom: 40px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--gray-light);
 }
 
+header h1 {
+  font-size: 2.4rem;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+/* Authentication section */
 .auth-methods {
-  margin-bottom: 30px;
+  margin-bottom: 40px;
   text-align: center;
+  background-color: var(--light);
+  padding: 25px;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+}
+
+.auth-methods h2 {
+  font-size: 1.4rem;
+  margin-bottom: 20px;
+  color: var(--dark);
 }
 
 .auth-tabs {
   display: flex;
   justify-content: center;
-  margin-bottom: 20px;
+  margin-bottom: 25px;
+  background-color: white;
+  border-radius: 50px;
+  padding: 5px;
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .auth-tab {
-  padding: 10px 20px;
+  padding: 12px 25px;
   border: none;
-  background-color: #f0f0f0;
+  background-color: transparent;
   cursor: pointer;
   margin: 0 5px;
+  border-radius: 50px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  color: var(--gray);
 }
 
 .auth-tab.active {
-  background-color: #007bff;
+  background-color: var(--primary);
   color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+}
+
+.auth-tab:hover:not(.active) {
+  background-color: var(--gray-light);
+  color: var(--dark);
 }
 
 .auth-container {
   margin-top: 20px;
 }
 
+/* Login prompt */
 .login-prompt {
   text-align: center;
-  margin: 20px 0;
-  padding: 15px;
-  background-color: #f8f9fa;
-  border-radius: 5px;
+  margin: 30px 0;
+  padding: 40px 20px;
+  background-color: var(--light);
+  border-radius: var(--border-radius);
+  border: 1px dashed var(--gray-light);
 }
 
+.login-prompt p {
+  font-size: 1.1rem;
+  color: var(--gray);
+}
+
+/* Error message */
 .error-message {
-  color: red;
-  padding: 10px;
-  margin: 10px 0;
-  background-color: #ffeeee;
-  border: 1px solid #ffcccc;
-  border-radius: 5px;
+  color: var(--danger);
+  padding: 15px;
+  margin: 20px 0;
+  background-color: #fee2e2;
+  border-radius: var(--border-radius);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.error-message::before {
+  content: "⚠️";
+  margin-right: 10px;
+  font-size: 1.2rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .app-container {
+    padding: 15px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+  }
+  
+  .auth-tabs {
+    flex-direction: column;
+    max-width: 100%;
+    border-radius: var(--border-radius);
+  }
+  
+  .auth-tab {
+    margin: 5px 0;
+    border-radius: var(--border-radius);
+  }
 }
 </style>

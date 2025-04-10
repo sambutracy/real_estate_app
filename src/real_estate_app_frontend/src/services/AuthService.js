@@ -28,14 +28,15 @@ class AuthService {
     try {
       return new Promise((resolve) => {
         this.authClient.login({
-          // Use the standard II canister ID for local development
-          identityProvider: process.env.NODE_ENV === "production"
-            ? "https://identity.ic0.app"
-            : `http://localhost:4943/?canisterId=${process.env.INTERNET_IDENTITY_CANISTER_ID || "rdmx6-jaaaa-aaaaa-aaadq-cai"}`,
-          // IMPORTANT: This makes sure you return to your app after authentication
+          // Always use NFID for authentication
+          identityProvider: this.getIdentityProviderUrl(),
+          // Maximum authentication expiration time (30 days)
+          maxTimeToLive: BigInt(30 * 24 * 60 * 60 * 1000 * 1000 * 1000),
+          // Ensure we get redirected back to our app after authentication
+          derivationOrigin: window.location.origin,
           onSuccess: () => {
             this.identity = this.authClient.getIdentity();
-            console.log("Login successful. Principal:", this.identity.getPrincipal().toString());
+            console.log("NFID Login successful. Principal:", this.identity.getPrincipal().toString());
             resolve(true);
           },
           onError: (error) => {
@@ -48,6 +49,10 @@ class AuthService {
       console.error("Error during login:", error);
       return false;
     }
+  }
+  
+  getIdentityProviderUrl() {
+    return "https://nfid.one/authenticate/";
   }
 
   async logout() {
