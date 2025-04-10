@@ -4,9 +4,14 @@
       "main": "src/real_estate_app_backend/main.mo",
       "type": "motoko"
     },
+    "auth": {
+      "main": "src/real_estate_app_backend/auth.mo",
+      "type": "motoko"
+    },
     "real_estate_app_frontend": {
       "dependencies": [
-        "real_estate_app_backend"
+        "real_estate_app_backend",
+        "auth"
       ],
       "frontend": {
         "entrypoint": "src/real_estate_app_frontend/index.html"

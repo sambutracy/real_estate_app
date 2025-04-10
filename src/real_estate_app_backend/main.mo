@@ -7,6 +7,12 @@ import Principal "mo:base/Principal";
 import Text "mo:base/Text";
 
 actor RealEstate {
+
+    // Add a function to check if a user is authenticated
+    public query func whoami(caller : Principal) : async Text {
+        return "Your identity: " # Principal.toText(caller);
+    };
+    
     // Property type
     public type Property = {
         id: Nat;
@@ -137,12 +143,13 @@ actor RealEstate {
     };
 
     // Search properties by location
+    // Search properties by location
     public query func searchByLocation(searchTerm: Text) : async [Property] {
         let searchResults = Iter.toArray(
             Iter.filter(
                 properties.vals(), 
                 func (p: Property) : Bool {
-                    return Text.contains(Text.toLower(p.location), #text Text.toLower(searchTerm));
+                    return Text.contains(Text.toLowercase(p.location), #text(Text.toLowercase(searchTerm)));
                 }
             )
         );
