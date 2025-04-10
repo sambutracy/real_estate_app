@@ -1,0 +1,26 @@
+{
+  "canisters": {
+    "real_estate_app_backend": {
+      "main": "src/real_estate_app_backend/main.mo",
+      "type": "motoko"
+    },
+    "real_estate_app_frontend": {
+      "dependencies": [
+        "real_estate_app_backend"
+      ],
+      "source": [
+        "src/real_estate_app_frontend/dist"
+      ],
+      "type": "assets",
+      "workspace": "real_estate_app_frontend"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
