@@ -14,5 +14,10 @@
   "type": "module",
   "workspaces": [
     "src/real_estate_app_frontend"
-  ]
+  ],
+  "dependencies": {
+    "@dfinity/agent": "^2.4.0",
+    "@dfinity/candid": "^2.4.0",
+    "@dfinity/principal": "^2.4.0"
+  }
 }

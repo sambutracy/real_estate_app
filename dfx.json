@@ -8,11 +8,14 @@
       "dependencies": [
         "real_estate_app_backend"
       ],
+      "frontend": {
+        "entrypoint": "src/real_estate_app_frontend/index.html"
+      },
       "source": [
-        "src/real_estate_app_frontend/dist"
+        "src/real_estate_app_frontend/assets",
+        "dist/real_estate_app_frontend/"
       ],
-      "type": "assets",
-      "workspace": "real_estate_app_frontend"
+      "type": "assets"
     }
   },
   "defaults": {
