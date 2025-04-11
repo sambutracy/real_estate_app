@@ -193,7 +193,7 @@ export default {
         },
         {
           agent,
-          canisterId: 'be2us-64aaa-aaaaa-qaabq-cai',
+          canisterId: 'uzt4z-lp777-77774-qaabq-cai',
         }
       );
       
@@ -328,8 +328,32 @@ export default {
       this.isAuthenticated = false;
     },
     
-    handleEmailLoginSuccess() {
+    async handleEmailLoginSuccess() {
       this.isAuthenticated = true;
+      
+      // Re-create the backend actor with the authenticated identity
+      try {
+        const agent = new HttpAgent();
+        
+        if (process.env.NODE_ENV !== "production") {
+          await agent.fetchRootKey().catch(e => {
+            console.error("Failed to fetch root key:", e);
+          });
+        }
+        
+        // Use the correct backend canister ID
+        this.real_estate_app_backend = Actor.createActor(
+          // Same IDL definition as before
+          ({ IDL }) => { /* ... existing IDL code ... */ },
+          {
+            agent,
+            canisterId: 'uzt4z-lp777-77774-qaabq-cai', // Correct ID
+          }
+        );
+      } catch (err) {
+        console.error("Failed to update agent for email auth:", err);
+      }
+      
       this.fetchProperties();
     },
     

@@ -21,5 +21,8 @@
     "@dfinity/candid": "^2.4.0",
     "@dfinity/identity": "^2.4.0",
     "@dfinity/principal": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10"
   }
 }

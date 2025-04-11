@@ -131,4 +131,19 @@ actor Auth {
       };
     };
   };
+
+  // Add this function to get principal from token
+  public query func getPrincipalFromToken(token: Text): async Text {
+    switch (sessions.get(token)) {
+      case (null) {
+        return "Invalid token";
+      };
+      case (?session) {
+        switch (users.get(session.userId)) {
+          case (null) { return "User not found"; };
+          case (?user) { return Principal.toText(user.principal); };
+        };
+      };
+    };
+  };
 }
