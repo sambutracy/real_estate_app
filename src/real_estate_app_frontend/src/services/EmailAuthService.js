@@ -28,11 +28,13 @@ class EmailAuthService {
       this.token = localStorage.getItem("auth_token") || null;
       this.email = localStorage.getItem("auth_email") || null;
       this.tokenExpiry = localStorage.getItem("auth_token_expiry") || null;
+      this.principalId = localStorage.getItem("auth_principal") || null;
     } catch (error) {
       console.error("Error accessing localStorage:", error);
       this.token = null;
       this.email = null;
       this.tokenExpiry = null;
+      this.principalId = null;
     }
   }
 
@@ -75,6 +77,28 @@ class EmailAuthService {
     }
   }
 
+  async getPrincipal() {
+    if (!this.token) return "Not authenticated";
+    
+    // If we already have the principal ID cached, return it
+    if (this.principalId) return this.principalId;
+    
+    try {
+      // Call the backend method to get the principal ID from token
+      const principal = await auth.getPrincipalFromToken(this.token);
+      this.principalId = principal;
+      localStorage.setItem("auth_principal", principal);
+      return principal;
+    } catch (error) {
+      console.error("Error getting principal ID:", error);
+      return "Error getting principal";
+    }
+  }
+  
+  getPrincipalText() {
+    return this.principalId || "Not authenticated";
+  }
+
   async login(email, password) {
     try {
       console.log("Attempting login with email:", email);
@@ -84,13 +108,16 @@ class EmailAuthService {
         this.token = result[0];
         this.email = email;
 
-        // Assuming backend returns expiry or set a default expiry
-        const expiry = result[1] || Date.now() + 3600 * 1000; // Default 1 hour
+        const expiry = result[1] || Date.now() + 3600 * 1000;
         this.tokenExpiry = expiry;
 
         localStorage.setItem("auth_token", this.token);
         localStorage.setItem("auth_email", email);
         localStorage.setItem("auth_token_expiry", this.tokenExpiry);
+        
+        // Get and store principal ID
+        const principal = await this.getPrincipal();
+        
         return true;
       }
       return false;
@@ -112,9 +139,11 @@ class EmailAuthService {
     this.token = null;
     this.email = null;
     this.tokenExpiry = null;
+    this.principalId = null;
     localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_email");
     localStorage.removeItem("auth_token_expiry");
+    localStorage.removeItem("auth_principal");
   }
 
   getEmail() {

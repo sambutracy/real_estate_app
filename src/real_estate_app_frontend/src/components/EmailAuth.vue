@@ -4,6 +4,7 @@
       <div class="user-info">
         <span class="email-badge">Email</span>
         <p class="user-email">{{ email }}</p>
+        <p class="principal-id">{{ principalId }}</p>
       </div>
       <button @click="logout" class="logout-btn">
         <span class="btn-icon">↩️</span>
@@ -119,6 +120,7 @@ export default {
     return {
       isAuthenticated: false,
       email: '',
+      principalId: 'Not authenticated',
       activeTab: 'login',
       loginForm: {
         email: '',
@@ -137,6 +139,7 @@ export default {
     this.isAuthenticated = await EmailAuthService.checkAuthentication();
     if (this.isAuthenticated) {
       this.email = EmailAuthService.getEmail();
+      this.principalId = await EmailAuthService.getPrincipal();
     }
   },
   methods: {
@@ -153,6 +156,7 @@ export default {
         if (success) {
           this.isAuthenticated = true;
           this.email = EmailAuthService.getEmail();
+          this.principalId = await EmailAuthService.getPrincipal();
           this.$emit('login-success');
         } else {
           this.error = 'Invalid email or password';
@@ -183,6 +187,7 @@ export default {
         if (success) {
           this.isAuthenticated = true;
           this.email = EmailAuthService.getEmail();
+          this.principalId = await EmailAuthService.getPrincipal();
           this.$emit('login-success');
         } else {
           this.error = 'Registration failed. Email may already be registered.';
@@ -199,6 +204,7 @@ export default {
       await EmailAuthService.logout();
       this.isAuthenticated = false;
       this.email = '';
+      this.principalId = 'Not authenticated';
       this.$emit('logout-success');
     }
   }
@@ -241,6 +247,13 @@ export default {
 .user-email {
   font-weight: 500;
   color: var(--dark);
+}
+
+.principal-id {
+  font-size: 0.8rem;
+  color: var(--gray);
+  word-break: break-all;
+  margin-top: 5px;
 }
 
 .auth-card {
