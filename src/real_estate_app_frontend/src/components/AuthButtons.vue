@@ -39,8 +39,8 @@ export default {
   methods: {
     async login() {
       try {
-        // Always use 'nfid' for authentication now
-        const success = await AuthService.login('nfid');
+        // Make sure it's always using NFID
+        const success = await AuthService.login();
         if (success) {
           this.isAuthenticated = true;
           this.principalId = AuthService.getPrincipalText();

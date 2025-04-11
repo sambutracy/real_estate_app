@@ -68,6 +68,14 @@ import AuthButtons from './components/AuthButtons.vue';
 import EmailAuth from './components/EmailAuth.vue';
 import AuthService from './services/AuthService';
 import EmailAuthService from './services/EmailAuthService';
+import { createActor } from "../../declarations/real_estate_app_backend";
+import { canisterId } from "../../declarations/real_estate_app_backend/index";
+
+console.log("Imported backend canisterId:", canisterId);
+
+const authCanisterId = process.env.NODE_ENV === "production" 
+  ? "uxrrr-q7777-77774-qaaaq-cai" // This should match production ID
+  : "uxrrr-q7777-77774-qaaaq-cai"; // This should match local ID
 
 export default {
   name: 'App',
@@ -111,91 +119,14 @@ export default {
         });
       }
       
-      // Create the backend actor
-      this.real_estate_app_backend = Actor.createActor(
-        ({ IDL }) => {
-          return IDL.Service({
-            'getAllProperties': IDL.Func([], [IDL.Vec(IDL.Record({
-              'id': IDL.Nat,
-              'owner': IDL.Principal,
-              'title': IDL.Text,
-              'description': IDL.Text,
-              'price': IDL.Nat,
-              'imageUrl': IDL.Text,
-              'location': IDL.Text,
-              'bedrooms': IDL.Nat,
-              'bathrooms': IDL.Nat,
-              'squareFootage': IDL.Nat,
-              'forSale': IDL.Bool,
-              'forRent': IDL.Bool
-            }))], ['query']),
-            'createProperty': IDL.Func([
-              IDL.Text,  // title
-              IDL.Text,  // description
-              IDL.Nat,   // price
-              IDL.Text,  // imageUrl
-              IDL.Text,  // location
-              IDL.Nat,   // bedrooms
-              IDL.Nat,   // bathrooms
-              IDL.Nat,   // squareFootage
-              IDL.Bool,  // forSale
-              IDL.Bool   // forRent
-            ], [IDL.Nat], []),
-            'getProperty': IDL.Func([IDL.Nat], [IDL.Opt(IDL.Record({
-              'id': IDL.Nat,
-              'owner': IDL.Principal,
-              'title': IDL.Text,
-              'description': IDL.Text,
-              'price': IDL.Nat,
-              'imageUrl': IDL.Text,
-              'location': IDL.Text,
-              'bedrooms': IDL.Nat,
-              'bathrooms': IDL.Nat,
-              'squareFootage': IDL.Nat,
-              'forSale': IDL.Bool,
-              'forRent': IDL.Bool
-            }))], ['query']),
-            'filterProperties': IDL.Func([
-              IDL.Opt(IDL.Nat),  // minBedrooms
-              IDL.Opt(IDL.Nat),  // maxPrice
-              IDL.Opt(IDL.Bool), // forSale
-              IDL.Opt(IDL.Bool)  // forRent
-            ], [IDL.Vec(IDL.Record({
-              'id': IDL.Nat,
-              'owner': IDL.Principal,
-              'title': IDL.Text,
-              'description': IDL.Text,
-              'price': IDL.Nat,
-              'imageUrl': IDL.Text,
-              'location': IDL.Text,
-              'bedrooms': IDL.Nat,
-              'bathrooms': IDL.Nat,
-              'squareFootage': IDL.Nat,
-              'forSale': IDL.Bool,
-              'forRent': IDL.Bool
-            }))], ['query']),
-            'searchByLocation': IDL.Func([IDL.Text], [IDL.Vec(IDL.Record({
-              'id': IDL.Nat,
-              'owner': IDL.Principal,
-              'title': IDL.Text,
-              'description': IDL.Text,
-              'price': IDL.Nat,
-              'imageUrl': IDL.Text,
-              'location': IDL.Text,
-              'bedrooms': IDL.Nat,
-              'bathrooms': IDL.Nat,
-              'squareFootage': IDL.Nat,
-              'forSale': IDL.Bool,
-              'forRent': IDL.Bool
-            }))], ['query']),
-            'whoami': IDL.Func([IDL.Principal], [IDL.Text], ['query'])
-          });
-        },
-        {
-          agent,
-          canisterId: 'be2us-64aaa-aaaaa-qaabq-cai',
-        }
-      );
+      // Log the imported canister ID
+      console.log("Using backend canisterId:", canisterId);
+      
+      // Create the backend actor with the explicitly imported canister ID
+      // If the auto-import doesn't work, try hardcoding the latest ID:
+      this.real_estate_app_backend = createActor("u6s2n-gx777-77774-qaaba-cai", {
+        agent
+      });
       
       // Check if user is already authenticated with either method
       try {
@@ -319,8 +250,35 @@ export default {
       }
     },
     
-    handleNFIDLoginSuccess() {
+    async handleNFIDLoginSuccess() {
       this.isAuthenticated = true;
+      
+      try {
+        const identity = AuthService.getIdentity();
+        if (identity) {
+          console.log("Creating new agent with authenticated identity");
+          
+          const agent = new HttpAgent({ identity });
+          
+          if (process.env.NODE_ENV !== "production") {
+            await agent.fetchRootKey().catch(e => {
+              console.error("Failed to fetch root key:", e);
+            });
+          }
+          
+          // Hard-code the correct backend canister ID
+          console.log("Using backend canister ID:", "u6s2n-gx777-77774-qaaba-cai");
+          this.real_estate_app_backend = createActor("u6s2n-gx777-77774-qaaba-cai", {
+            agent
+          });
+          
+          console.log("Actor recreated with authenticated identity");
+        }
+      } catch (err) {
+        console.error("Failed to update agent identity:", err);
+      }
+      
+      // Now fetch properties with the authenticated actor
       this.fetchProperties();
     },
     
@@ -328,8 +286,34 @@ export default {
       this.isAuthenticated = false;
     },
     
-    handleEmailLoginSuccess() {
+    async handleEmailLoginSuccess() {
       this.isAuthenticated = true;
+      
+      try {
+        // Get the email authentication token
+        const token = EmailAuthService.getToken();
+        if (token) {
+          console.log("Creating new agent with email authenticated token");
+          
+          const agent = new HttpAgent();
+          
+          if (process.env.NODE_ENV !== "production") {
+            await agent.fetchRootKey().catch(e => {
+              console.error("Failed to fetch root key:", e);
+            });
+          }
+          
+          // Use the correct backend canister ID
+          this.real_estate_app_backend = createActor("u6s2n-gx777-77774-qaaba-cai", {
+            agent
+          });
+          
+          console.log("Actor recreated for email authentication");
+        }
+      } catch (err) {
+        console.error("Failed to update agent for email auth:", err);
+      }
+      
       this.fetchProperties();
     },
     

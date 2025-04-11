@@ -52,6 +52,7 @@ class AuthService {
   }
   
   getIdentityProviderUrl() {
+    // Make sure this always returns NFID and not Internet Identity
     return "https://nfid.one/authenticate/";
   }
 
@@ -65,16 +66,16 @@ class AuthService {
       return false;
     }
   }
-
+  
   getIdentity() {
     return this.identity;
   }
-
+  
   getPrincipalText() {
     if (!this.identity) return 'Not authenticated';
     return this.identity.getPrincipal().toString();
   }
-
+  
   isAuthenticated() {
     return this.authClient?.isAuthenticated() || false;
   }
