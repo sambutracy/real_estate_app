@@ -4,10 +4,17 @@ import Principal "mo:base/Principal";
 import HashMap "mo:base/HashMap";
 import Option "mo:base/Option";
 import Nat "mo:base/Nat";
+import Nat8 "mo:base/Nat8";
 import Time "mo:base/Time";
 import Nat32 "mo:base/Nat32";
 import Char "mo:base/Char";
 import Int "mo:base/Int";
+import Blob "mo:base/Blob";
+import Array "mo:base/Array";
+
+// Remove these two imports that require the "ic" package
+// import Delegation "mo:ic/Delegation";
+// import Crypto "mo:ic/Crypto";
 
 actor Auth {
   // User type
@@ -35,32 +42,66 @@ actor Auth {
   private func hashPassword(password: Text): Text {
     var hash : Nat = 0;
     for (char in password.chars()) {
-      let charCode = Nat32.toNat(Char.toNat32(char));
-      hash := (hash + charCode) * 31;
+      let charCode = Char.toNat32(char);
+      hash := (hash + Nat32.toNat(charCode)) * 31;
     };
     return Nat.toText(hash);
   };
   
+  private func generatePrincipal(email: Text, timestamp: Int) : Principal {
+    // Create a shorter seed using just a hash of the email + timestamp
+    let seed = Text.concat(email, Int.toText(timestamp));
+    
+    // Create a shorter, fixed-length array (29 bytes max for principals)
+    var bytes = Array.init<Nat8>(29, 0);
+    
+    // Simple hash function to distribute values
+    var hashValue : Nat32 = 0;
+    for (char in seed.chars()) {
+      let charCode = Char.toNat32(char);
+      hashValue := (hashValue +% charCode) *% 31;
+      
+      // Distribute the hash across the byte array
+      let pos = Nat32.toNat(hashValue % 29);
+      bytes[pos] := Nat8.fromNat(Nat32.toNat(hashValue % 256));
+    };
+    
+    // Add some randomness based on timestamp
+    let timeValue = Int.abs(timestamp) % 256;
+    let timeByte = Nat8.fromNat(Int.abs(timeValue)); // Int.abs already returns a Nat
+    bytes[0] := timeByte;
+    
+    // Create a blob from the bytes
+    let blob = Blob.fromArray(Array.freeze(bytes));
+    
+    return Principal.fromBlob(blob);
+  };
+  
   // Register a new user
-  public shared(msg) func register(email: Text, password: Text): async Bool {
+  public shared(_msg) func register(email: Text, password: Text): async Bool {
     if (Option.isSome(users.get(email))) {
       return false; // User already exists
     };
     
     let passwordHash = hashPassword(password);
+    let timestamp = Time.now();
+    
+    // Generate a unique principal 
+    let userPrincipal = generatePrincipal(email, timestamp);
+    
     let newUser: User = {
       email = email;
       passwordHash = passwordHash;
-      principal = msg.caller;
-      createdAt = Time.now();
+      principal = userPrincipal;
+      createdAt = timestamp;
     };
     
     users.put(email, newUser);
     return true;
   };
   
-  // Login and create session
-  public func login(email: Text, password: Text): async ?Text {
+  // Login returning both token and principal text
+  public func login(email: Text, password: Text): async ?(Text, Text) {
     switch (users.get(email)) {
       case (null) { 
         return null; // User not found
@@ -68,11 +109,9 @@ actor Auth {
       case (?user) {
         let passwordHash = hashPassword(password);
         if (passwordHash == user.passwordHash) {
-          // Convert Time.now() to Nat when needed for text concatenation
+          // Create token
           let currentTime = Time.now();
           let timeText = Int.toText(currentTime);
-          
-          // Create a token using email and timestamp
           let token = Text.concat(email, timeText);
           
           // Create session
@@ -83,13 +122,17 @@ actor Auth {
           };
           
           sessions.put(token, session);
-          return ?token;
+          
+          // Return both token and principal
+          return ?(token, Principal.toText(user.principal));
         } else {
           return null; // Incorrect password
         };
       };
     };
   };
+  
+  // REMOVE the loginWithDelegation function for now
   
   // Verify session
   public query func verifySession(token: Text): async Bool {
@@ -132,7 +175,7 @@ actor Auth {
     };
   };
 
-  // Add this function to get principal from token
+  // Get principal from token
   public query func getPrincipalFromToken(token: Text): async Text {
     switch (sessions.get(token)) {
       case (null) {

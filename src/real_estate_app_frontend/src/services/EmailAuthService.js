@@ -2,19 +2,42 @@ import { idlFactory } from "../../../declarations/auth/auth.did.js";
 import { Actor, HttpAgent } from "@dfinity/agent";
 import { canisterId as authCanisterId } from "../../../declarations/auth/index.js";
 
-// Create the auth actor with the correct canister ID
-const agent = new HttpAgent({
-  host: import.meta.env.PROD ? undefined : "http://localhost:8000"
-});
-
-// Fetch root key for local dev environment
-if (!import.meta.env.PROD) {
-  try {
-    agent.fetchRootKey();
-  } catch (err) {
-    console.warn("Unable to fetch root key. Error:", err);
+// Ensure the host function is properly implemented
+const getHost = () => {
+  if (import.meta.env.PROD) return undefined;
+  
+  const hostname = window.location.hostname;
+  const isCodespaces = hostname.includes('github.dev') || 
+                      hostname.includes('githubpreview') ||
+                      hostname.includes('codespaces') ||
+                      hostname.endsWith('.github.dev');
+  
+  if (isCodespaces) {
+    // Return the full URL to port 8000
+    return `${window.location.protocol}//${hostname.replace(/:\d+$/, '')}:8000`;
   }
-}
+  
+  return "http://127.0.0.1:8000";
+};
+
+// Change to async initialization pattern
+const agent = new HttpAgent({ host: getHost() });
+
+// Add console logs
+console.log("Agent created with host:", getHost());
+console.log("Auth canister ID:", authCanisterId);
+
+// Fix the root key fetching - use immediate async function
+(async () => {
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      await agent.fetchRootKey();
+      console.log("Root key successfully fetched");
+    } catch (err) {
+      console.error("Failed to fetch root key:", err);
+    }
+  }
+})();
 
 // Create actor with the correct canister ID from your deployment
 const auth = Actor.createActor(idlFactory, {
@@ -77,46 +100,59 @@ class EmailAuthService {
     }
   }
 
+  // Update the getPrincipal method to use stored principal
   async getPrincipal() {
-    if (!this.token) return "Not authenticated";
-    
-    // If we already have the principal ID cached, return it
-    if (this.principalId) return this.principalId;
-    
-    try {
-      // Call the backend method to get the principal ID from token
-      const principal = await auth.getPrincipalFromToken(this.token);
-      this.principalId = principal;
-      localStorage.setItem("auth_principal", principal);
-      return principal;
-    } catch (error) {
-      console.error("Error getting principal ID:", error);
-      return "Error getting principal";
+    // If we have the principal ID cached, return it
+    if (this.principalId) {
+      return this.principalId;
     }
+    
+    // Try to get from localStorage
+    const storedPrincipal = localStorage.getItem("auth_principal");
+    if (storedPrincipal) {
+      this.principalId = storedPrincipal;
+      return storedPrincipal;
+    }
+    
+    // As a last resort, get from backend
+    if (this.token) {
+      try {
+        const principal = await auth.getPrincipalFromToken(this.token);
+        this.principalId = principal;
+        localStorage.setItem("auth_principal", principal);
+        return principal;
+      } catch (error) {
+        console.error("Error getting principal ID:", error);
+        return "Error getting principal";
+      }
+    }
+    
+    return "Not authenticated";
   }
   
   getPrincipalText() {
     return this.principalId || "Not authenticated";
   }
 
+  // Update the login method to handle the new return value with principal
   async login(email, password) {
     try {
       console.log("Attempting login with email:", email);
       const result = await auth.login(email, password);
       console.log("Login response:", result);
-      if (result && result.length > 0) {
+      
+      if (result && result.length >= 2) {
         this.token = result[0];
         this.email = email;
-
-        const expiry = result[1] || Date.now() + 3600 * 1000;
+        this.principalId = result[1];  // Store the principal ID
+        
+        const expiry = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
         this.tokenExpiry = expiry;
 
         localStorage.setItem("auth_token", this.token);
         localStorage.setItem("auth_email", email);
         localStorage.setItem("auth_token_expiry", this.tokenExpiry);
-        
-        // Get and store principal ID
-        const principal = await this.getPrincipal();
+        localStorage.setItem("auth_principal", this.principalId);
         
         return true;
       }
@@ -125,6 +161,12 @@ class EmailAuthService {
       console.error("Detailed login error:", error);
       return false;
     }
+  }
+
+  async loginWithDelegation(email, password) {
+    // This will be implemented later
+    console.warn("Delegation not yet implemented");
+    return false;
   }
 
   async logout() {
