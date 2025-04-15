@@ -1,5 +1,7 @@
 import { AuthClient } from "@dfinity/auth-client";
-import { HttpAgent } from "@dfinity/agent";
+import { HttpAgent, Actor } from "@dfinity/agent";
+import { idlFactory as backendIdlFactory } from "../../../declarations/real_estate_app_backend/real_estate_app_backend.did.js";
+import { canisterId as backendCanisterId } from "../../../declarations/real_estate_app_backend/index.js";
 
 class AuthService {
   constructor() {
@@ -79,5 +81,11 @@ class AuthService {
     return this.authClient?.isAuthenticated() || false;
   }
 }
+
+const agent = new HttpAgent();
+const backendActor = Actor.createActor(backendIdlFactory, {
+  agent,
+  canisterId: backendCanisterId
+});
 
 export default new AuthService();

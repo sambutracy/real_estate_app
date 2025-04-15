@@ -68,6 +68,8 @@ import AuthButtons from './components/AuthButtons.vue';
 import EmailAuth from './components/EmailAuth.vue';
 import AuthService from './services/AuthService';
 import EmailAuthService from './services/EmailAuthService';
+import { idlFactory as backendIdlFactory } from "../../declarations/real_estate_app_backend/real_estate_app_backend.did.js";
+import { canisterId as backendCanisterId } from "../../declarations/real_estate_app_backend/index.js";
 
 export default {
   name: 'App',
@@ -103,9 +105,11 @@ export default {
     
     try {
       // Initialize the backend actor
-      const agent = new HttpAgent();
+      const agent = new HttpAgent({
+        host: import.meta.env.PROD ? undefined : "http://localhost:8000"
+      });
       
-      if (process.env.NODE_ENV !== "production") {
+      if (!import.meta.env.PROD) {
         await agent.fetchRootKey().catch(e => {
           console.error("Failed to fetch root key:", e);
         });
@@ -193,7 +197,7 @@ export default {
         },
         {
           agent,
-          canisterId: 'uzt4z-lp777-77774-qaabq-cai',
+          canisterId: backendCanisterId,
         }
       );
       
@@ -333,9 +337,11 @@ export default {
       
       // Re-create the backend actor with the authenticated identity
       try {
-        const agent = new HttpAgent();
+        const agent = new HttpAgent({
+          host: import.meta.env.PROD ? undefined : "http://localhost:8000"
+        });
         
-        if (process.env.NODE_ENV !== "production") {
+        if (!import.meta.env.PROD) {
           await agent.fetchRootKey().catch(e => {
             console.error("Failed to fetch root key:", e);
           });
@@ -343,11 +349,10 @@ export default {
         
         // Use the correct backend canister ID
         this.real_estate_app_backend = Actor.createActor(
-          // Same IDL definition as before
-          ({ IDL }) => { /* ... existing IDL code ... */ },
+          backendIdlFactory,
           {
             agent,
-            canisterId: 'uzt4z-lp777-77774-qaabq-cai', // Correct ID
+            canisterId: backendCanisterId, // Correct ID
           }
         );
       } catch (err) {

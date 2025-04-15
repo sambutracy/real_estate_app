@@ -24,8 +24,7 @@
         "entrypoint": "src/real_estate_app_frontend/src/main.js"
       },
       "source": [
-        "src/real_estate_app_frontend/assets",
-        "dist/real_estate_app_frontend/"
+        "src/real_estate_app_frontend/dist"
       ],
       "type": "assets"
     }

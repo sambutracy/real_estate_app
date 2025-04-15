@@ -1,10 +1,32 @@
 import { fileURLToPath, URL } from 'url';
 import { defineConfig } from 'vite';
-import environment from 'vite-plugin-environment';
 import vue from '@vitejs/plugin-vue';
-import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 
-dotenv.config({ path: '../../.env' });
+// Function to dynamically read canister IDs from the canister_ids.json file
+function getCanisterIds() {
+  const canisterIdsPath = path.resolve(__dirname, '../../.dfx/local/canister_ids.json');
+  let canisterIds = {};
+  
+  try {
+    if (fs.existsSync(canisterIdsPath)) {
+      const canisterIdsFile = fs.readFileSync(canisterIdsPath, 'utf-8');
+      canisterIds = JSON.parse(canisterIdsFile);
+    }
+  } catch (error) {
+    console.warn("Could not get canister IDs from .dfx/local/canister_ids.json");
+  }
+  
+  return {
+    'process.env.CANISTER_ID_REAL_ESTATE_APP_BACKEND': 
+      JSON.stringify(canisterIds?.real_estate_app_backend?.local || 'be2us-64aaa-aaaaa-qaabq-cai'),
+    'process.env.CANISTER_ID_AUTH': 
+      JSON.stringify(canisterIds?.auth?.local || 'bkyz2-fmaaa-aaaaa-qaaaq-cai'),
+    'process.env.CANISTER_ID_INTERNET_IDENTITY': 
+      JSON.stringify(canisterIds?.internet_identity?.local || 'bd3sg-teaaa-aaaaa-qaaba-cai')
+  };
+}
 
 export default defineConfig({
   build: {
@@ -20,18 +42,18 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:4943',
+        target: 'http://localhost:8000',
         changeOrigin: true,
       },
     },
     host: '0.0.0.0',
     port: 3000,
   },
-  plugins: [
-    vue(),
-    environment('all', { prefix: 'CANISTER_' }),
-    environment('all', { prefix: 'DFX_' }),
-  ],
+  plugins: [vue()],
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
+    ...getCanisterIds()
+  },
   resolve: {
     alias: [
       { find: 'declarations', replacement: fileURLToPath(new URL('../declarations', import.meta.url)) },

@@ -1,14 +1,14 @@
 import { idlFactory } from "../../../declarations/auth/auth.did.js";
 import { Actor, HttpAgent } from "@dfinity/agent";
+import { canisterId as authCanisterId } from "../../../declarations/auth/index.js";
 
-// Create the auth actor directly without using createActor from declarations
-// This ensures we use exactly the ID we specify
+// Create the auth actor with the correct canister ID
 const agent = new HttpAgent({
-  host: process.env.NODE_ENV === "production" ? undefined : "http://localhost:4943"
+  host: import.meta.env.PROD ? undefined : "http://localhost:8000"
 });
 
 // Fetch root key for local dev environment
-if (process.env.NODE_ENV !== "production") {
+if (!import.meta.env.PROD) {
   try {
     agent.fetchRootKey();
   } catch (err) {
@@ -16,10 +16,10 @@ if (process.env.NODE_ENV !== "production") {
   }
 }
 
-// Create actor with explicit canister ID from canister_ids.json
+// Create actor with the correct canister ID from your deployment
 const auth = Actor.createActor(idlFactory, {
   agent,
-  canisterId: "uxrrr-q7777-77774-qaaaq-cai"
+  canisterId: authCanisterId
 });
 
 class EmailAuthService {
