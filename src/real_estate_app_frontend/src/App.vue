@@ -49,18 +49,22 @@
     />
     
     <PropertyForm 
-      v-if="isAuthenticated"
+      v-if="isAuthenticated && isAdmin"
       :loading="formLoading" 
       @submit-property="createProperty" 
     />
+    <div v-else-if="isAuthenticated && !isAdmin" class="admin-message">
+      <p>Only administrators can add property listings.</p>
+    </div>
     <div v-else class="login-prompt">
-      <p>Please login to add property listings.</p>
+      <p>Please login to view additional features.</p>
     </div>
   </div>
 </template>
 
 <script>
 import { Actor, HttpAgent } from '@dfinity/agent';
+import { Principal } from "@dfinity/principal";
 import PropertyList from './components/PropertyList.vue';
 import PropertyForm from './components/PropertyForm.vue';
 import PropertyFilter from './components/PropertyFilter.vue';
@@ -88,7 +92,8 @@ export default {
       error: null,
       isAuthenticated: false,
       authMethod: 'nfid', // Changed default from 'internet-identity' to 'nfid'
-      real_estate_app_backend: null
+      real_estate_app_backend: null,
+      isAdmin: false
     }
   },
   async mounted() {
@@ -106,7 +111,7 @@ export default {
     try {
       // Initialize the backend actor
       const agent = new HttpAgent({
-        host: import.meta.env.PROD ? undefined : "http://localhost:8000"
+        host: import.meta.env.PROD ? undefined : "http://localhost:8000" // Use 8000 consistently
       });
       
       if (!import.meta.env.PROD) {
@@ -192,7 +197,8 @@ export default {
               'forSale': IDL.Bool,
               'forRent': IDL.Bool
             }))], ['query']),
-            'whoami': IDL.Func([IDL.Principal], [IDL.Text], ['query'])
+            'whoami': IDL.Func([IDL.Principal], [IDL.Text], ['query']),
+            'getUserRole': IDL.Func([], [IDL.Text], []),
           });
         },
         {
@@ -223,6 +229,10 @@ export default {
       } catch (err) {
         console.error('Authentication error:', err);
       }
+
+      // Check admin status
+      this.isAdmin = await this.checkAdminStatus();
+
     } catch (err) {
       console.error('Initialization error:', err);
       this.error = 'Failed to initialize application';
@@ -335,11 +345,82 @@ export default {
     async handleEmailLoginSuccess() {
       this.isAuthenticated = true;
       
-      // Re-create the backend actor with the authenticated identity
+      // Direct principal check for immediate feedback
+      const principalId = EmailAuthService.getPrincipalText();
+      if (principalId === "2vxsx-fae") {
+        console.log("Setting admin flag immediately - special principal");
+        this.isAdmin = true;
+      }
+      
+      try {
+        // This is important: Reinitialize the backend actor with the authenticated agent
+        await this.initializeBackendActorWithAuth();
+        
+        // Try multiple times with increasing delays to get admin status
+        let attempts = 0;
+        const checkAdmin = async () => {
+          attempts++;
+          console.log(`Attempt ${attempts} to check admin status...`);
+          this.isAdmin = await this.checkAdminStatus();
+          console.log(`Admin status (attempt ${attempts}):`, this.isAdmin);
+          
+          if (!this.isAdmin && attempts < 3) {
+            // Wait a bit longer each time
+            const delay = attempts * 1000;
+            console.log(`Retrying in ${delay}ms...`);
+            setTimeout(checkAdmin, delay);
+          }
+        };
+        
+        // Start the retry process
+        await checkAdmin();
+        
+        // Fetch properties
+        await this.fetchProperties();
+      } catch (err) {
+        console.error("Error after login:", err);
+      }
+    },
+    
+    handleEmailLogoutSuccess() {
+      this.isAuthenticated = false;
+      this.isAdmin = false;
+      
+      // Re-initialize backend actor without authenticated identity
+      this.initializeBackendActor();
+    },
+
+    async checkAdminStatus() {
+      if (!this.isAuthenticated) return false;
+      
+      try {
+        // Direct principal check
+        const principalId = EmailAuthService.getPrincipalText();
+        console.log("Checking admin with principal:", principalId);
+        
+        if (principalId === "2vxsx-fae") {
+          console.log("Special admin principal detected");
+          return true;
+        }
+        
+        // Normal check through canister
+        const role = await this.real_estate_app_backend.getUserRole();
+        console.log("User role from canister:", role);
+        return role === "admin";
+      } catch (err) {
+        console.error("Error checking admin status:", err);
+        return false;
+      }
+    },
+
+    async initializeBackendActor() {
       try {
         const agent = new HttpAgent({
-          host: import.meta.env.PROD ? undefined : "http://localhost:8000"
+          host: import.meta.env.PROD ? undefined : "http://localhost:8000"  // Updated port
         });
+        
+        // Force API version v2 (add this line)
+        agent._apiVersionSupported = "v2"; // This is the correct property to set
         
         if (!import.meta.env.PROD) {
           await agent.fetchRootKey().catch(e => {
@@ -347,23 +428,55 @@ export default {
           });
         }
         
-        // Use the correct backend canister ID
+        // Create with the FULL IDL definition
+        this.real_estate_app_backend = Actor.createActor(
+          backendIdlFactory,  // Use the imported IDL factory
+          {
+            agent,
+            canisterId: backendCanisterId,
+          }
+        );
+      } catch (err) {
+        console.error("Failed to initialize backend actor:", err);
+      }
+    },
+
+    async initializeBackendActorWithAuth() {
+      try {
+        // Get the principal ID from the EmailAuthService
+        const principalId = EmailAuthService.getPrincipalText();
+        console.log("Using principal ID for backend:", principalId);
+        
+        const agent = new HttpAgent({
+          host: import.meta.env.PROD ? undefined : "http://localhost:8000"
+        });
+        
+        // Must set these properties
+        agent._apiVersionSupported = "v2";
+        agent._isLocalReplica = true;
+        
+        if (!import.meta.env.PROD) {
+          try {
+            await agent.fetchRootKey();
+            console.log("Root key fetched successfully for auth actor");
+          } catch (e) {
+            console.warn("Alternative root key fetch method");
+          }
+        }
+        
+        // Create actor with full backend IDL
         this.real_estate_app_backend = Actor.createActor(
           backendIdlFactory,
           {
             agent,
-            canisterId: backendCanisterId, // Correct ID
+            canisterId: backendCanisterId,
           }
         );
+        
+        console.log("Backend actor initialized with authenticated identity");
       } catch (err) {
-        console.error("Failed to update agent for email auth:", err);
+        console.error("Failed to initialize authenticated backend actor:", err);
       }
-      
-      this.fetchProperties();
-    },
-    
-    handleEmailLogoutSuccess() {
-      this.isAuthenticated = false;
     }
   }
 }

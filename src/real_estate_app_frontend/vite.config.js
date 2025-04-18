@@ -42,10 +42,10 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:8000', // Use port 8000 consistently
         changeOrigin: true,
-        // Don't rewrite the path - keep the /api prefix
-        rewrite: (path) => path
+        // Don't rewrite api/v2 to api/v3 
+        rewrite: (path) => path.replace(/^\/api\/v3\//, '/api/v2/')
       }
     },
     host: '0.0.0.0',
@@ -59,8 +59,10 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: 'declarations', replacement: fileURLToPath(new URL('../declarations', import.meta.url)) },
-      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      { find: '@', replacement: path.resolve(__dirname, './src') },
     ],
     dedupe: ['@dfinity/agent'],
   }
 });
+
+

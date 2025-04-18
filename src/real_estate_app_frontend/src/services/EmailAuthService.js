@@ -1,49 +1,92 @@
 import { idlFactory } from "../../../declarations/auth/auth.did.js";
 import { Actor, HttpAgent } from "@dfinity/agent";
+import { Principal } from "@dfinity/principal";
+// Import the correct canister ID from the generated declarations
 import { canisterId as authCanisterId } from "../../../declarations/auth/index.js";
+import { createActor } from "../../../declarations/auth";
 
-// Ensure the host function is properly implemented
+// Add this function at the top of the file, before the EmailAuthService class
+
+// Helper function to generate a token on client side
+function generateToken() {
+  const timestamp = Date.now();
+  const randomPart = Math.floor(Math.random() * 1000000);
+  return `${timestamp}-${randomPart}`;
+}
+
+// Replace your existing getHost function with this:
 const getHost = () => {
-  if (import.meta.env.PROD) return undefined;
+  if (process.env.NODE_ENV === "production") return undefined;
   
   const hostname = window.location.hostname;
-  const isCodespaces = hostname.includes('github.dev') || 
-                      hostname.includes('githubpreview') ||
-                      hostname.includes('codespaces') ||
-                      hostname.endsWith('.github.dev');
+  console.log("Current hostname:", hostname);
   
-  if (isCodespaces) {
-    // Return the full URL to port 8000
-    return `${window.location.protocol}//${hostname.replace(/:\d+$/, '')}:8000`;
+  // More specific Codespaces detection
+  if (hostname.includes('github.dev') || 
+      hostname.includes('githubpreview') || 
+      hostname.includes('codespaces') || 
+      hostname.endsWith('.app.github.dev')) {
+    
+    // Use the window.location.origin for the base URL, but replace port with 8000
+    // Format example: https://yourname-yourproject-1234.app.github.dev:3000 → https://yourname-yourproject-1234.app.github.dev:8000
+    const currentUrl = window.location.origin;
+    const icUrl = currentUrl.replace(/:\d+$/, ':8000');
+    
+    console.log("REMOTE ENVIRONMENT DETECTED!");
+    console.log("Using remote IC URL:", icUrl);
+    return icUrl;
   }
   
-  return "http://127.0.0.1:8000";
+  console.log("LOCAL ENVIRONMENT DETECTED");
+  return "http://localhost:8000";  // Try changing to port 8000 
 };
 
-// Change to async initialization pattern
-const agent = new HttpAgent({ host: getHost() });
+// Add this right after the getHost function but before creating the agent
+const forceRemoteMode = false; // Set to true to force remote URL for testing
 
-// Add console logs
-console.log("Agent created with host:", getHost());
+const agent = new HttpAgent({ 
+  host: forceRemoteMode ? 
+    window.location.origin.replace(/:\d+$/, ':8000') : 
+    getHost() 
+});
+
+console.log("FORCED HOST URL:", agent._host);
+
+// Add this right after creating the agent
+console.log("Agent host:", getHost());
 console.log("Auth canister ID:", authCanisterId);
 
-// Fix the root key fetching - use immediate async function
-(async () => {
-  if (process.env.NODE_ENV !== "production") {
-    try {
-      await agent.fetchRootKey();
-      console.log("Root key successfully fetched");
-    } catch (err) {
-      console.error("Failed to fetch root key:", err);
-    }
+// Fetch root key for local dev environment
+if (process.env.NODE_ENV !== "production") {
+  try {
+    agent.fetchRootKey();
+    console.log("Root key fetched successfully");
+  } catch (err) {
+    console.warn("Unable to fetch root key. Error:", err);
   }
-})();
+}
 
-// Create actor with the correct canister ID from your deployment
+// Log the canister ID we're using
+console.log("Using auth canister ID:", authCanisterId);
+
+// Create actor with the CORRECT canister ID
 const auth = Actor.createActor(idlFactory, {
   agent,
-  canisterId: authCanisterId
+  canisterId: authCanisterId // Use the imported ID instead of hardcoded placeholder
 });
+
+// Add a simple test function
+window.testAuthCanister = async () => {
+  try {
+    console.log("Testing auth canister connectivity...");
+    const response = await fetch(`${getHost()}/api/v2/status`);
+    console.log("IC replica status response:", response.status);
+    const data = await response.text();
+    console.log("IC replica data:", data);
+  } catch (error) {
+    console.error("IC connectivity test failed:", error);
+  }
+};
 
 class EmailAuthService {
   constructor() {
@@ -100,73 +143,114 @@ class EmailAuthService {
     }
   }
 
-  // Update the getPrincipal method to use stored principal
   async getPrincipal() {
-    // If we have the principal ID cached, return it
-    if (this.principalId) {
-      return this.principalId;
-    }
+    if (!this.token) return "Not authenticated";
     
-    // Try to get from localStorage
-    const storedPrincipal = localStorage.getItem("auth_principal");
-    if (storedPrincipal) {
-      this.principalId = storedPrincipal;
-      return storedPrincipal;
-    }
+    // If we already have the principal ID cached, return it
+    if (this.principalId) return this.principalId;
     
-    // As a last resort, get from backend
-    if (this.token) {
-      try {
-        const principal = await auth.getPrincipalFromToken(this.token);
-        this.principalId = principal;
-        localStorage.setItem("auth_principal", principal);
-        return principal;
-      } catch (error) {
-        console.error("Error getting principal ID:", error);
-        return "Error getting principal";
-      }
+    try {
+      // Call the backend method to get the principal ID from token
+      const principal = await auth.getPrincipalFromToken(this.token);
+      this.principalId = principal;
+      localStorage.setItem("auth_principal", principal);
+      return principal;
+    } catch (error) {
+      console.error("Error getting principal ID:", error);
+      return "Error getting principal";
     }
-    
-    return "Not authenticated";
   }
   
   getPrincipalText() {
     return this.principalId || "Not authenticated";
   }
 
-  // Update the login method to handle the new return value with principal
   async login(email, password) {
     try {
       console.log("Attempting login with email:", email);
-      const result = await auth.login(email, password);
+      
+      // Create agent with the correct API version
+      const loginAgent = new HttpAgent({ 
+        host: "http://localhost:8000"
+      });
+      loginAgent._isLocalReplica = true; // Skip certificate verification for local dev
+
+      // Special configuration for v2 API
+      loginAgent._apiVersion = "v2"; // Force API v2 - use _apiVersion directly
+      
+      if (process.env.NODE_ENV !== "production") {
+        try {
+          await loginAgent.fetchRootKey();
+          console.log("Root key fetched successfully");
+        } catch (e) {
+          console.warn("Using alternative root key method");
+        }
+      }
+      
+      // Use createActor helper instead of manual Actor.createActor
+      const authActor = createActor(authCanisterId, { agent: loginAgent });
+      
+      const result = await authActor.login(email, password);
       console.log("Login response:", result);
       
-      if (result && result.length >= 2) {
-        this.token = result[0];
+      // Handle the Result type correctly
+      if (result && "ok" in result) {
         this.email = email;
-        this.principalId = result[1];  // Store the principal ID
+        this.token = generateToken(); // Create a local token or extract from response
         
-        const expiry = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
-        this.tokenExpiry = expiry;
-
+        // Make sure we're getting the full principal
+        if (typeof result.ok.principal === 'string') {
+          this.principalId = result.ok.principal;
+          console.log("Principal from backend (string):", this.principalId);
+        } else if (result.ok.principal && typeof result.ok.principal.toText === 'function') {
+          // If it's a Principal object with toText method
+          this.principalId = result.ok.principal.toText();
+          console.log("Principal from backend (Principal object):", this.principalId);
+        } else if (result.ok.principal) {
+          // Just convert to string in some way
+          this.principalId = String(result.ok.principal);
+          console.log("Principal from backend (converted to string):", this.principalId);
+        } else {
+          // Fallback to dummy value
+          this.principalId = "unknown-principal";
+          console.warn("No principal received from backend");
+        }
+        
+        // Log the principal length to verify it's correct
+        console.log("Principal ID length:", this.principalId.length);
+        
+        this.tokenExpiry = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
+        
         localStorage.setItem("auth_token", this.token);
         localStorage.setItem("auth_email", email);
-        localStorage.setItem("auth_token_expiry", this.tokenExpiry);
+        localStorage.setItem("auth_token_expiry", this.tokenExpiry.toString());
         localStorage.setItem("auth_principal", this.principalId);
         
+        // Update user principal with a retry
+        let principalUpdateSuccess = false;
+        for (let i = 0; i < 3; i++) {
+          try {
+            console.log(`Attempt ${i+1} to update user principal...`);
+            await authActor.updateUserPrincipal(email);
+            principalUpdateSuccess = true;
+            console.log("Principal updated successfully");
+            break;
+          } catch (error) {
+            console.warn(`Failed to update principal (attempt ${i+1}):`, error);
+            await new Promise(r => setTimeout(r, 1000)); // Wait 1 second between retries
+          }
+        }
+        
         return true;
+      } else if (result && "err" in result) {
+        console.error("Login error:", result.err);
+        return false;
       }
       return false;
     } catch (error) {
       console.error("Detailed login error:", error);
       return false;
     }
-  }
-
-  async loginWithDelegation(email, password) {
-    // This will be implemented later
-    console.warn("Delegation not yet implemented");
-    return false;
   }
 
   async logout() {
@@ -194,6 +278,34 @@ class EmailAuthService {
 
   getToken() {
     return this.token;
+  }
+
+  // Add these functions for better principal handling
+  getPrincipalFromText(principalText) {
+    try {
+      return Principal.fromText(principalText);
+    } catch (e) {
+      console.error("Invalid principal text:", e);
+      return null;
+    }
+  }
+
+  // Add this method to EmailAuthService class
+  getSharedAgent() {
+    // Create a new agent with the same identity
+    const sharedAgent = new HttpAgent({ 
+      host: "http://localhost:8000"
+    });
+    
+    // Force API version v2
+    sharedAgent._apiVersionSupported = "v2";
+    
+    // If we have principal ID, set it
+    if (this.principalId) {
+      console.log("Setting shared agent with principal:", this.principalId);
+    }
+    
+    return sharedAgent;
   }
 }
 

@@ -20,7 +20,7 @@
     "@dfinity/auth-client": "^2.4.0",
     "@dfinity/candid": "^2.4.0",
     "@dfinity/identity": "^2.4.0",
-    "@dfinity/principal": "^2.4.0"
+    "@dfinity/principal": "^2.4.1"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10"

@@ -1,140 +1,66 @@
 <template>
-  <div class="add-property">
+  <div class="property-form-container">
     <h2>Add New Property</h2>
-    <form @submit.prevent="handleSubmit">
-      <div class="form-row">
-        <div class="form-group">
-          <label for="title">Property Title</label>
-          <input
-            id="title"
-            type="text"
-            v-model="formData.title"
-            placeholder="Enter property title"
-            required
-          />
-        </div>
+    <form @submit.prevent="submitProperty" class="property-form">
+      <div class="form-group">
+        <label for="title">Title</label>
+        <input type="text" id="title" v-model="property.title" required />
+      </div>
+      
+      <div class="form-group">
+        <label for="description">Description</label>
+        <textarea id="description" v-model="property.description" required></textarea>
       </div>
       
       <div class="form-row">
-        <div class="form-group">
-          <label for="description">Description</label>
-          <textarea
-            id="description"
-            v-model="formData.description"
-            placeholder="Describe the property..."
-            required
-          ></textarea>
-        </div>
-      </div>
-      
-      <div class="form-row two-columns">
         <div class="form-group">
           <label for="price">Price</label>
-          <div class="input-with-icon">
-            <span class="input-icon">$</span>
-            <input
-              id="price"
-              type="number"
-              min="0"
-              step="1"
-              v-model.number="formData.price"
-              placeholder="Enter price (whole number only)"
-              required
-            />
-          </div>
+          <input type="number" id="price" v-model.number="property.price" required />
         </div>
         
         <div class="form-group">
           <label for="location">Location</label>
-          <input
-            id="location"
-            type="text"
-            v-model="formData.location"
-            placeholder="City, State or Address"
-            required
-          />
+          <input type="text" id="location" v-model="property.location" required />
         </div>
       </div>
       
-      <div class="form-row three-columns">
+      <div class="form-row">
         <div class="form-group">
           <label for="bedrooms">Bedrooms</label>
-          <input
-            id="bedrooms"
-            type="number"
-            v-model="formData.bedrooms"
-            placeholder="Bedrooms"
-            min="0"
-            required
-          />
+          <input type="number" id="bedrooms" v-model.number="property.bedrooms" required />
         </div>
         
         <div class="form-group">
           <label for="bathrooms">Bathrooms</label>
-          <input
-            id="bathrooms"
-            type="number"
-            v-model="formData.bathrooms"
-            placeholder="Bathrooms"
-            min="0"
-            step="0.5"
-            required
-          />
+          <input type="number" id="bathrooms" v-model.number="property.bathrooms" required />
         </div>
         
         <div class="form-group">
           <label for="squareFootage">Square Footage</label>
-          <input
-            id="squareFootage"
-            type="number"
-            v-model="formData.squareFootage"
-            placeholder="Square Footage"
-            min="0"
-            required
-          />
+          <input type="number" id="squareFootage" v-model.number="property.squareFootage" required />
         </div>
       </div>
       
-      <div class="form-row">
-        <div class="form-group">
-          <label for="imageUrl">Image URL</label>
-          <input
-            id="imageUrl"
-            type="text"
-            v-model="formData.imageUrl"
-            placeholder="Enter image URL"
-          />
+      <div class="form-row checkbox-row">
+        <div class="form-group checkbox">
+          <input type="checkbox" id="forSale" v-model="property.forSale" />
+          <label for="forSale">For Sale</label>
+        </div>
+        
+        <div class="form-group checkbox">
+          <input type="checkbox" id="forRent" v-model="property.forRent" />
+          <label for="forRent">For Rent</label>
         </div>
       </div>
       
-      <div class="form-row">
-        <div class="form-group checkbox-group">
-          <div class="checkbox-item">
-            <input
-              type="checkbox"
-              id="forSale"
-              v-model="formData.forSale"
-            />
-            <label for="forSale">For Sale</label>
-          </div>
-          
-          <div class="checkbox-item">
-            <input
-              type="checkbox"
-              id="forRent"
-              v-model="formData.forRent"
-            />
-            <label for="forRent">For Rent</label>
-          </div>
-        </div>
+      <div class="form-group">
+        <label for="imageUrl">Image URL</label>
+        <input type="text" id="imageUrl" v-model="property.imageUrl" required />
       </div>
       
-      <div class="form-actions">
-        <button type="button" class="cancel-btn" @click="resetForm">Cancel</button>
-        <button type="submit" class="submit-btn" :disabled="loading">
-          {{ loading ? 'Adding Property...' : 'Add Property' }}
-        </button>
-      </div>
+      <button type="submit" :disabled="loading" class="submit-button">
+        {{ loading ? 'Adding...' : 'Add Property' }}
+      </button>
     </form>
   </div>
 </template>
@@ -142,58 +68,41 @@
 <script>
 export default {
   name: 'PropertyForm',
-  data() {
-    return {
-      formData: {
-        title: '',
-        description: '',
-        price: '',
-        imageUrl: '',
-        location: '',
-        bedrooms: '',
-        bathrooms: '',
-        squareFootage: '',
-        forSale: true,
-        forRent: false
-      }
-    }
-  },
   props: {
     loading: {
       type: Boolean,
       default: false
     }
   },
-  methods: {
-    handleSubmit() {
-      // Pre-validate the price field to ensure it's a valid positive integer
-      const price = Number(this.formData.price);
-      if (isNaN(price) || price < 0 || !Number.isInteger(price)) {
-        alert('Price must be a valid whole number');
-        return;
-      }
-      
-      // Ensure all numeric values are valid positive integers
-      const formattedData = {
-        ...this.formData,
-        price: Math.floor(Math.max(0, Number(this.formData.price))),
-        bedrooms: Math.floor(Math.max(0, Number(this.formData.bedrooms))),
-        bathrooms: Math.floor(Math.max(0, Number(this.formData.bathrooms))),
-        squareFootage: Math.floor(Math.max(0, Number(this.formData.squareFootage))),
-      };
-      
-      this.$emit('submit-property', formattedData);
-    },
-    resetForm() {
-      this.formData = {
+  data() {
+    return {
+      property: {
         title: '',
         description: '',
-        price: '',
+        price: 0,
         imageUrl: '',
         location: '',
-        bedrooms: '',
-        bathrooms: '',
-        squareFootage: '',
+        bedrooms: 1,
+        bathrooms: 1,
+        squareFootage: 0,
+        forSale: true,
+        forRent: false
+      }
+    }
+  },
+  methods: {
+    submitProperty() {
+      this.$emit('submit-property', { ...this.property });
+      // Reset form
+      this.property = {
+        title: '',
+        description: '',
+        price: 0,
+        imageUrl: '',
+        location: '',
+        bedrooms: 1,
+        bathrooms: 1,
+        squareFootage: 0,
         forSale: true,
         forRent: false
       };
@@ -203,59 +112,49 @@ export default {
 </script>
 
 <style scoped>
-.add-property {
+.property-form-container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 30px;
   background: white;
   border-radius: 10px;
-  padding: 25px;
-  margin-bottom: 30px;
-  box-shadow: 0 2px 15px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
 h2 {
-  margin-bottom: 20px;
+  text-align: center;
+  margin-bottom: 25px;
   color: #333;
-  font-size: 1.5rem;
 }
 
-form {
+.property-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-}
-
-.form-row {
-  display: flex;
   gap: 15px;
-  width: 100%;
-}
-
-.two-columns .form-group {
-  width: 50%;
-}
-
-.three-columns .form-group {
-  width: 33.333%;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  width: 100%;
+  flex: 1;
+}
+
+.form-row {
+  display: flex;
+  gap: 15px;
 }
 
 label {
+  margin-bottom: 5px;
   font-weight: 500;
   color: #555;
-  font-size: 0.9rem;
 }
 
-input, textarea, select {
-  padding: 12px 15px;
+input, textarea {
+  padding: 10px;
   border: 1px solid #ddd;
-  border-radius: 6px;
-  font-size: 1rem;
-  width: 100%;
+  border-radius: 4px;
+  font-size: 16px;
 }
 
 textarea {
@@ -263,86 +162,47 @@ textarea {
   resize: vertical;
 }
 
-.input-with-icon {
-  position: relative;
+.checkbox-row {
+  margin: 10px 0;
 }
 
-.input-icon {
-  position: absolute;
-  left: 15px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #666;
-}
-
-.input-with-icon input {
-  padding-left: 30px;
-}
-
-.checkbox-group {
-  display: flex;
-  gap: 20px;
-  margin-top: 10px;
-}
-
-.checkbox-item {
-  display: flex;
+.checkbox {
+  flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.checkbox-item input {
+.checkbox input {
+  margin-right: 8px;
   width: auto;
 }
 
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 15px;
-  margin-top: 10px;
-}
-
-.cancel-btn, .submit-btn {
-  padding: 12px 20px;
-  border-radius: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.cancel-btn {
-  background-color: transparent;
-  border: 1px solid #ddd;
-  color: #666;
-}
-
-.cancel-btn:hover {
-  background-color: #f5f5f5;
-}
-
-.submit-btn {
+.submit-button {
+  margin-top: 20px;
+  padding: 12px;
   background-color: #1a73e8;
   color: white;
   border: none;
+  border-radius: 4px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
 
-.submit-btn:hover:not(:disabled) {
+.submit-button:hover {
   background-color: #1557b0;
 }
 
-.submit-btn:disabled {
-  background-color: #a9a9a9;
+.submit-button:disabled {
+  background-color: #92b6e5;
   cursor: not-allowed;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .form-row {
     flex-direction: column;
-  }
-  
-  .two-columns .form-group,
-  .three-columns .form-group {
-    width: 100%;
+    gap: 15px;
   }
 }
 </style>
