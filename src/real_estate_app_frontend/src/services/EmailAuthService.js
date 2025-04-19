@@ -194,30 +194,44 @@ class EmailAuthService {
       console.log("Login response:", result);
       
       // Handle the Result type correctly
+      // After successful login
       if (result && "ok" in result) {
         this.email = email;
-        this.token = generateToken(); // Create a local token or extract from response
+        this.token = generateToken();
         
-        // Make sure we're getting the full principal
+        // Make sure we get the ORIGINAL principal from the backend
         if (typeof result.ok.principal === 'string') {
           this.principalId = result.ok.principal;
           console.log("Principal from backend (string):", this.principalId);
-        } else if (result.ok.principal && typeof result.ok.principal.toText === 'function') {
-          // If it's a Principal object with toText method
+        } else if (result.ok.principal._isPrincipal) {
           this.principalId = result.ok.principal.toText();
           console.log("Principal from backend (Principal object):", this.principalId);
-        } else if (result.ok.principal) {
-          // Just convert to string in some way
-          this.principalId = String(result.ok.principal);
-          console.log("Principal from backend (converted to string):", this.principalId);
         } else {
-          // Fallback to dummy value
-          this.principalId = "unknown-principal";
-          console.warn("No principal received from backend");
+          console.log("Full principal object from backend:", result.ok.principal);
+          try {
+            // Try getting it from an array representation
+            if (Array.isArray(result.ok.principal)) {
+              const principal = Principal.fromUint8Array(new Uint8Array(result.ok.principal));
+              this.principalId = principal.toText();
+            } else {
+              this.principalId = String(result.ok.principal);
+            }
+          } catch (e) {
+            console.error("Error processing principal:", e);
+            this.principalId = String(result.ok.principal);
+          }
         }
         
-        // Log the principal length to verify it's correct
         console.log("Principal ID length:", this.principalId.length);
+        // Add right after setting the principalId
+        console.log("FINAL PRINCIPAL TO USE:", this.principalId);
+        console.log("PRINCIPAL LENGTH:", this.principalId.length);
+        if (this.principalId.length < 20) {
+          console.warn("WARNING: Principal appears to be truncated!");
+        } else {
+          console.log("Principal has proper length - authentication should work correctly");
+        }
+        // Rest of the login code...
         
         this.tokenExpiry = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
         
@@ -227,19 +241,7 @@ class EmailAuthService {
         localStorage.setItem("auth_principal", this.principalId);
         
         // Update user principal with a retry
-        let principalUpdateSuccess = false;
-        for (let i = 0; i < 3; i++) {
-          try {
-            console.log(`Attempt ${i+1} to update user principal...`);
-            await authActor.updateUserPrincipal(email);
-            principalUpdateSuccess = true;
-            console.log("Principal updated successfully");
-            break;
-          } catch (error) {
-            console.warn(`Failed to update principal (attempt ${i+1}):`, error);
-            await new Promise(r => setTimeout(r, 1000)); // Wait 1 second between retries
-          }
-        }
+        console.log("Using original principal from backend, no overwriting.");
         
         return true;
       } else if (result && "err" in result) {

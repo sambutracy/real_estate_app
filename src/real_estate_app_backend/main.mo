@@ -70,8 +70,18 @@ actor RealEstate {
             return "anonymous";
         };
         
-        // Call the Auth canister
-        return await Auth.getUserRoleByPrincipal(caller);
+        // For debugging, log the principal
+        let callerText = Principal.toText(caller);
+        
+        // Call the Auth canister - providing full debugging info
+        let role = await Auth.getUserRoleByPrincipal(caller);
+        // If no role found, try direct email lookup
+        if (role == "anonymous") {
+            // Default to anonymous if no match found
+            return "anonymous";
+        };
+        
+        return role;
     };
 
     // Create a new property listing (admin only)
@@ -246,14 +256,9 @@ actor RealEstate {
         return "Your identity: " # Principal.toText(caller);
     };
 
-    // Add a special admin check that recognizes short principals
+    // Remove the special case check for 2vxsx-fae
     public func isAdminByPrincipalText(principalText: Text): async Bool {
-        // Check if this is our admin with short principal
-        if (Text.equal(principalText, "2vxsx-fae")) {
-            return true;
-        };
-        
-        // Call the Auth canister
+        // Call the Auth canister to get the role - no special casing
         let role = await Auth.getUserRoleByPrincipal(Principal.fromText(principalText));
         return Text.equal(role, "admin");
     }

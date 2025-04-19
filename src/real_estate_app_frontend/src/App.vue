@@ -74,6 +74,9 @@ import AuthService from './services/AuthService';
 import EmailAuthService from './services/EmailAuthService';
 import { idlFactory as backendIdlFactory } from "../../declarations/real_estate_app_backend/real_estate_app_backend.did.js";
 import { canisterId as backendCanisterId } from "../../declarations/real_estate_app_backend/index.js";
+// CORRECT imports - use "auth" to match dfx.json
+import { idlFactory as authIdlFactory } from "../../declarations/auth/auth.did.js";
+import { canisterId as authCanisterId } from "../../declarations/auth/index.js";
 
 export default {
   name: 'App',
@@ -347,9 +350,9 @@ export default {
       
       // Direct principal check for immediate feedback
       const principalId = EmailAuthService.getPrincipalText();
-      if (principalId === "2vxsx-fae") {
-        console.log("Setting admin flag immediately - special principal");
-        this.isAdmin = true;
+      if (this.isAuthenticated) {
+        console.log("Checking admin status properly via canister...");
+        this.isAdmin = await this.checkAdminStatus();
       }
       
       try {
@@ -394,19 +397,30 @@ export default {
       if (!this.isAuthenticated) return false;
       
       try {
-        // Direct principal check
-        const principalId = EmailAuthService.getPrincipalText();
-        console.log("Checking admin with principal:", principalId);
+        // Check admin by direct email instead of relying on principal
+        const email = EmailAuthService.getEmail();
+        if (!email) return false;
         
-        if (principalId === "2vxsx-fae") {
-          console.log("Special admin principal detected");
-          return true;
+        // Create a simple agent for this specific call
+        const agent = new HttpAgent({
+          host: import.meta.env.PROD ? undefined : "http://localhost:8000"
+        });
+        
+        if (!import.meta.env.PROD) {
+          await agent.fetchRootKey().catch(e => console.error("Root key fetch error:", e));
         }
         
-        // Normal check through canister
-        const role = await this.real_estate_app_backend.getUserRole();
-        console.log("User role from canister:", role);
-        return role === "admin";
+        // Use the imported auth canisterId
+        const authActor = Actor.createActor(
+          authIdlFactory, // Make sure to import this at the top
+          {
+            agent,
+            canisterId: authCanisterId // Make sure to import this at the top
+          }
+        );
+        
+        // Check if admin by email directly
+        return await authActor.isAdminByEmail(email);
       } catch (err) {
         console.error("Error checking admin status:", err);
         return false;
@@ -447,29 +461,32 @@ export default {
         const principalId = EmailAuthService.getPrincipalText();
         console.log("Using principal ID for backend:", principalId);
         
+        // Don't try to create a complex identity - use an anonymous one
         const agent = new HttpAgent({
           host: import.meta.env.PROD ? undefined : "http://localhost:8000"
         });
         
-        // Must set these properties
+        // Set required properties
         agent._apiVersionSupported = "v2";
-        agent._isLocalReplica = true;
+        
+        // Don't set _isLocalReplica which can cause issues
+        // agent._isLocalReplica = true; <-- REMOVE THIS
         
         if (!import.meta.env.PROD) {
           try {
             await agent.fetchRootKey();
             console.log("Root key fetched successfully for auth actor");
           } catch (e) {
-            console.warn("Alternative root key fetch method");
+            console.warn("Failed to fetch root key:", e);
           }
         }
         
-        // Create actor with full backend IDL
+        // Create actor with backend IDL
         this.real_estate_app_backend = Actor.createActor(
           backendIdlFactory,
           {
             agent,
-            canisterId: backendCanisterId,
+            canisterId: backendCanisterId
           }
         );
         
